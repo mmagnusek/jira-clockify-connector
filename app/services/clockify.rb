@@ -1,29 +1,42 @@
+require 'curb'
+require 'yajl'
+
 class Clockify
-  # include Virtus.model
+  include Virtus.model
 
   PAGE_SIZE = 100
+  TAKS_REGEXP = /\[?([A-Za-z]+-\d+)\]?[\s:]?(.*)/
 
   ClockifyApiError = Class.new(Exception)
   ClockifyUserNotFoundError = Class.new(Exception)
 
-  # string :workspace_id
-  # string :user_email
-  # time :start_time, default: -> { 1.month.ago }
-  # time :end_time,   default: -> { Time.now.utc }
+  attribute :user, User
 
   def execute
-    fetch_time_entries
+    fetch_time_entries.map do |entry|
+      time_entry = user.time_entries.find_or_initialize_by(clockify_id: entry['id'])
+      matched    = entry['description'].match(TAKS_REGEXP)
+
+      time_entry.update(
+        clockify_description:  entry['description'],
+        start_time:            entry['timeInterval']['start'],
+        duration:              ActiveSupport::Duration.parse(entry['timeInterval']['duration']),
+        jira_task_id:          (matched[1] if matched),
+        jira_task_description: (matched[2].strip if matched)
+      )
+    end
   end
 
   private
 
   def fetch_time_entries(page=1)
-    # params = { start: '2020-10-01T00:00:00+00:00',
-    #            end: '2020-10-20T00:00:00+00:00',
-    #            page: page,
-    #            'page-size': PAGE_SIZE }.to_query
-    # path = "workspaces/5cd125b9d278ae0c52167416/user/#{user_id}/time-entries?#{params}"
-    path = "workspaces/5cd125b9d278ae0c52167416/user/#{user_id}/time-entries"
+    params = {
+      start: Time.current.beginning_of_month.iso8601,
+      end:   Time.current.iso8601,
+      page:  page,
+      'page-size': PAGE_SIZE
+    }
+    path = "workspaces/5cd125b9d278ae0c52167416/user/#{user_id}/time-entries?#{params.to_query}"
     time_entries = make_request(path)
     if time_entries.size == PAGE_SIZE
       time_entries + fetch_time_entries(page + 1)
@@ -42,19 +55,16 @@ class Clockify
     curl.http_get
     raise ClockifyApiError, curl.body_str unless curl.status.include?('200')
 
-    # [{"id"=>"5f86aa60ad83f95645469806", "description"=>"CHEDDAR-391", "tagIds"=>nil, "userId"=>"5ce2b589d278ae76b4c5329b", "billable"=>false, "taskId"=>nil, "projectId"=>"5cf4de6db07987371eb9e6f5", "timeInterval"=>{"start"=>"2020-10-14T07:06:00Z", "end"=>"2020-10-14T07:55:04Z", "duration"=>"PT49M4S"}, "workspaceId"=>"5cd125b9d278ae0c52167416", "isLocked"=>false, "customFieldValues"=>nil}]
-
     Yajl::Parser.new.parse(curl.body_str)
   end
 
   def user_id
-    @user_id ||= begin
+    unless user.clockify_id
       hash = make_request("workspaces/5cd125b9d278ae0c52167416/users")
-      user = hash.find { |u| u['email'] == 'magnusekm@gmail.com' }
-      raise ClockifyUserNotFoundError, 'magnusekm@gmail.com' unless user
-      user['id']
+      clockify_user = hash.find { |u| u['email'] == user.email }
+      user.update(clockify_id: clockify_user['id']) if clockify_user
     end
+
+    user.clockify_id || raise(ClockifyUserNotFoundError, user.email)
   end
 end
-
-puts Clockify.new.execute
