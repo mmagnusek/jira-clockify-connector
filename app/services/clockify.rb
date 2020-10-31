@@ -29,20 +29,14 @@ class Clockify
 
   private
 
-  def fetch_time_entries(page=1)
+  def fetch_time_entries
     params = {
-      start: Time.current.beginning_of_month.iso8601,
+      start: 45.days.ago.beginning_of_day.iso8601,
       end:   Time.current.iso8601,
-      page:  page,
-      'page-size': PAGE_SIZE
     }
-    path = "workspaces/5cd125b9d278ae0c52167416/user/#{user_id}/time-entries?#{params.to_query}"
-    time_entries = make_request(path)
-    if time_entries.size == PAGE_SIZE
-      time_entries + fetch_time_entries(page + 1)
-    else
-      time_entries.filter { |tm| tm["timeInterval"]["end"] }
-    end
+    path = "workspaces/5cd125b9d278ae0c52167416/user/#{user_id}/time-entries"
+
+    get_items(path, params).filter { |tm| tm["timeInterval"]["end"] }
   end
 
   def make_request(path)
@@ -58,9 +52,18 @@ class Clockify
     Yajl::Parser.new.parse(curl.body_str)
   end
 
+  def get_items(path, params = {}, page = 1)
+    params['page-size'] = PAGE_SIZE
+
+    items = make_request("#{path}?#{params.merge(page: page).to_query}")
+    items + get_items(path, params, page + 1) if items.size == PAGE_SIZE
+    items
+  end
+
   def user_id
     unless user.clockify_id
-      hash = make_request("workspaces/5cd125b9d278ae0c52167416/users")
+      hash = get_items("workspaces/5cd125b9d278ae0c52167416/users")
+      puts hash.map { |u| u['email'] }
       clockify_user = hash.find { |u| u['email'] == user.email }
       user.update(clockify_id: clockify_user['id']) if clockify_user
     end
