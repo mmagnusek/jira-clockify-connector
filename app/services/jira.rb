@@ -34,7 +34,7 @@ class Jira
     new_request do |curl|
       curl.url = "https://#{authentication}@jira.bootiq.io/rest/api/2/issue/#{time_entry.jira_task_id}/worklog"
       curl.http_post(data.to_json)
-      raise JiraApiError, curl.body_str unless curl.status.include?('201')
+      raise JiraApiError, "TimeEntry ##{time_entry.id}: #{curl.body_str}" unless curl.status.include?('201')
       curl
     end
   end
@@ -43,7 +43,7 @@ class Jira
     new_request do |curl|
       curl.url = "https://#{authentication}@jira.bootiq.io/rest/api/2/issue/#{time_entry.jira_task_id}/worklog/#{time_entry.jira_id}"
       curl.http_put(data.to_json)
-      raise JiraApiError, curl.body_str unless curl.status.include?('200')
+      raise JiraApiError, "TimeEntry ##{time_entry.id}: #{curl.body_str}" unless curl.status.include?('200')
       curl
     end
   end
@@ -52,7 +52,7 @@ class Jira
     {
       "timeSpentSeconds" => time_entry.duration,
       "started"          => time_entry.start_time.strftime('%FT%T.%L%z'),
-      "comment"          => time_entry.jira_task_description.presence || 'Working :-)'
+      "comment"          => time_entry.jira_task_description.presence || 'Working'
     }
   end
 
