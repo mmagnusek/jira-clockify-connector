@@ -30,7 +30,7 @@ class Clockify
   private
 
   def fetch_time_entries
-    params = { start: 45.days.ago.beginning_of_day.iso8601 }
+    params = { start: 60.days.ago.beginning_of_day.iso8601 }
     path   = "workspaces/5cd125b9d278ae0c52167416/user/#{user_id}/time-entries"
 
     get_items(path, params).filter { |tm| tm["timeInterval"]["end"] }
